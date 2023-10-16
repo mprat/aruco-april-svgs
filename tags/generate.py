@@ -49,7 +49,7 @@ def bit_coordinate_to_corner_coordinate(bit_coordinate):
 
 
 # component id 0 is where there are no tags present
-for component_id in range(1, num_components + 1):
+for component_id in range(1, num_components):
     corners = []
     # go through and add all the coordinates and add the
     # corners of the connected component. the coordinates
@@ -97,51 +97,19 @@ for component_id in range(1, num_components + 1):
     assert ordered[0][0] == ordered[-1][0] or ordered[0][1] == ordered[-1][1]
 
     # to each of the coordinates we need to add the border_bits
-    line_corners.append(np.array(ordered) + 1)
+    line_corners.append(np.fliplr(np.array(ordered)) + 1)
 
-# tag_group.append(
-#     draw.Lines(
-#         1 * step,
-#         3 * step,
-#         1 * step,
-#         5 * step,
-#         3 * step,
-#         5 * step,
-#         3 * step,
-#         4 * step,
-#         2 * step,
-#         4 * step,
-#         2 * step,
-#         3 * step,
-#         close=True,
-#         stroke_width=2,
-#         fill="white",
-#         fill_opacity=1,
-#         stroke="white",
-#     )
-# )
-
-# tag_group.append(
-#     draw.Lines(
-#         3 * step,
-#         1 * step,
-#         3 * step,
-#         3 * step,
-#         4 * step,
-#         3 * step,
-#         4 * step,
-#         2 * step,
-#         5 * step,
-#         2 * step,
-#         5 * step,
-#         1 * step,
-#         close=True,
-#         stroke_width=2,
-#         fill="white",
-#         fill_opacity=1,
-#         stroke="white",
-#     )
-# )
+for corners in line_corners:
+    tag_group.append(
+        draw.Lines(
+            *(np.array(corners)).flatten() * step,
+            close=True,
+            stroke_width=2,
+            fill="white",
+            fill_opacity=1,
+            stroke="white",
+        )
+    )
 
 tag_drawing.append(tag_group)
 tag_drawing.save_svg("test.svg")
