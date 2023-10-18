@@ -28,10 +28,10 @@ class Orientation(IntEnum):
 
 def is_opposite(or1, or2):
     return (
-        (or1.LEFT and or2.RIGHT)
-        or (or1.RIGHT and or2.LEFT)
-        or (or1.UP and or2.DOWN)
-        or (or1.DOWN and or2.UP)
+        (or1 == Orientation.LEFT and or2 == Orientation.RIGHT)
+        or (or1 == Orientation.RIGHT and or2 == Orientation.LEFT)
+        or (or1 == Orientation.UP and or2 == Orientation.DOWN)
+        or (or1 == Orientation.DOWN and or2 == Orientation.UP)
     )
 
 
@@ -106,6 +106,23 @@ def ordered_segments_to_corners_list(segments):
             corners_list.append(segment.start)
 
     return corners_list
+
+
+def get_inside_point(seg):
+    """The inside point is the point representing the "inside".
+
+    It is at the midpoint of the segment, then 0.5 units away
+    from the segment in the direction of the inside.
+    """
+    midpoint = ((seg.start[0] + seg.end[0]) / 2, (seg.start[1] + seg.end[1]) / 2)
+    if seg.inside == Orientation.UP:
+        return (midpoint[0], midpoint[1] - 0.5)
+    if seg.inside == Orientation.DOWN:
+        return (midpoint[0], midpoint[1] + 0.5)
+    if seg.inside == Orientation.LEFT:
+        return (midpoint[0] - 0.5, midpoint[1])
+    if seg.inside == Orientation.RIGHT:
+        return (midpoint[0] + 0.5, midpoint[1])
 
 
 def generate_svg(
@@ -227,61 +244,125 @@ def generate_svg(
                 cand
                 for cand in keep_segments
                 if next_seg.start in (cand.start, cand.end)
+                and not is_opposite(next_seg.inside, cand.inside)
             ]
 
-            if len(next_seg_cands) != 1:
-                # this happens when there is a square that touches another square in a corner
-                # but is also connected to the rest of the shape (e.g. DICT_5X5_1000 tag 0)
-                # in this case we pick one, then if we have tags left over at the end that
-                # we can't match, we need to
-                if len(next_seg_cands) == 3:
-                    next_seg = next_seg_cands[0]
-                    save_state = (keep_segments.copy(), ordered.copy())
-                    # TODO: this hasn't come up yet?
-                    #
-                    ordered.append(next_seg)
-                    keep_segments.remove(next_seg)
-                elif len(next_seg_cands) == 0:
-                    # we have no candidates left, so we either
-                    # have reached the end of the DFS from the previous
-                    # state, or we have a hole in the center of this shape.
+            # if there are zero segments available then we have reached
+            # the DFS search or we have a hole in the center
+            if len(next_seg_cands) == 0:
+                # have we reached the end of the path?
+                if share_corner(ordered[0], ordered[-1]):
+                    # we believe the remaining path elements to be
+                    # a hole, so we need to reconnect that path
+                    next_seg = keep_segments.pop()
+                    hole = [next_seg]
+                    while len(keep_segments) > 0:
+                        next_seg_cands = [
+                            cand
+                            for cand in keep_segments
+                            if next_seg.start in (cand.start, cand.end)
+                            and not is_opposite(next_seg.inside, cand.inside)
+                        ]
+                        if len(next_seg_cands) != 1:
+                            raise RuntimeError("WHEN")
 
-                    # have we reached the end of the path?
-                    if share_corner(ordered[0], ordered[-1]):
-                        # we believe the remaining path elements to be
-                        # a hole, so we need to reconnect that path
-                        next_seg = keep_segments.pop()
-                        hole = [next_seg]
-                        while len(keep_segments) > 0:
-                            next_seg_cands = [
-                                cand
-                                for cand in keep_segments
-                                if next_seg.start in (cand.start, cand.end)
-                            ]
+                        next_seg = next_seg_cands[0]
+                        hole.append(next_seg)
+                        keep_segments.remove(next_seg)
 
-                            if len(next_seg_cands) != 1:
-                                raise RuntimeError("WHEN")
+                    # if this is FALSE and we have a save_state, then we need
+                    # to back-track and try a different candidate
+                    hole_valid = hole[0].start in (
+                        hole[-1].start,
+                        hole[-1].end,
+                    ) or hole[0].end in (
+                        hole[-1].start,
+                        hole[-1].end,
+                    )
+                    if not hole_valid:
+                        if save_state is not None:
+                            # BACKTRACK from save_state
+                            (
+                                keep_segments,
+                                ordered,
+                                tried,
+                                others_to_try,
+                            ) = save_state
 
-                            next_seg = next_seg_cands[0]
-                            hole.append(next_seg)
+                            next_seg = others_to_try[0]
+                            tried.append(next_seg)
+                            others_to_try.remove(next_seg)
+
+                            save_state = (
+                                keep_segments,
+                                ordered,
+                                tried,
+                                others_to_try,
+                            )
+
+                            import pdb
+
+                            pdb.set_trace()
+                            ordered.append(next_seg)
                             keep_segments.remove(next_seg)
 
-                        assert hole[0].start in (
-                            hole[-1].start,
-                            hole[-1].end,
-                        ) or hole[0].end in (
-                            hole[-1].start,
-                            hole[-1].end,
-                        )
-                    else:
-                        # we've reached a failed DFS state and need to re-route backwards
-                        raise RuntimeError("WHO")
-                else:
-                    raise RuntimeError("WHAT")
-            else:
+                            # reset the hole
+                            hole = []
+                        else:
+                            raise RuntimeError("WHERE")
+
+                    # go back to the beginning of the loop
+                    # since the hole is valid and we found one
+                    continue
+
+            if len(next_seg_cands) == 1:
                 next_seg = next_seg_cands[0]
-                ordered.append(next_seg)
-                keep_segments.remove(next_seg)
+            else:
+                # we pick our most likely candidate and save the state
+                # our most likely candidate is the one that is "closer"
+                # to the segment in question based on the "inside-ness" of
+                # the segment. e.g.:
+                #
+                #   | ->   --- one we're matching to
+                #
+                #   ^
+                #   |      --- candidate 1
+                #   _
+                #
+                #   _
+                #   |      --- candidate 2
+                #  \ /
+                #
+                #  candidate 1 is "closer" because the point representing the orientation
+                #  is closer to the one we're matching than the one from candidate 2
+                #
+                cur_inside_point = get_inside_point(next_seg)
+                inside_points = [get_inside_point(cand) for cand in next_seg_cands]
+                inside_point_dist = [
+                    np.sqrt(
+                        (ip[0] - cur_inside_point[0]) ** 2
+                        + (ip[1] - cur_inside_point[1]) ** 2
+                    )
+                    for ip in inside_points
+                ]
+                next_seg = next_seg_cands[np.argmin(inside_point_dist)]
+
+                # save the state
+                # (segments not yet assigned,
+                #  segments already assigned,
+                #  segment about to try assigning,
+                #  possible segments that can be assigned)
+                # the one we've tried assigning is not yet removed from keep_segments
+                next_seg_cands.remove(next_seg)
+                save_state = (
+                    keep_segments.copy(),
+                    ordered.copy(),
+                    [next_seg],
+                    next_seg_cands,
+                )
+
+            ordered.append(next_seg)
+            keep_segments.remove(next_seg)
 
         assert ordered[0].start in (ordered[-1].start, ordered[-1].end) or ordered[
             0
@@ -295,8 +376,6 @@ def generate_svg(
             holes.append(ordered_segments_to_corners_list(hole))
         else:
             holes.append(None)
-
-    # TODO: doesn't handle case of shape inside another shape. wonder where this will fail
 
     for corners, hole in zip(line_corners, holes):
         if hole is not None:
@@ -350,7 +429,7 @@ if __name__ == "__main__":
     total = 0
 
     for tag_id in range(0, tag_dict.bytesList.shape[0]):
-        # for tag_id in range(3, 4):
+        # for tag_id in range(0, 5):
         print(f"working on tag {tag_id}")
         total += 1
         try:
