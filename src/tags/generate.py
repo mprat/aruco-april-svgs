@@ -146,20 +146,6 @@ def generate_svg(
     # of positive bits. draw a line group connecting each of
     # these so there are the minimal number of SVG components
     # per group
-    tag_drawing = draw.Drawing(
-        step * grid_size,
-        step * grid_size,
-        origin=(0, 0),
-        displayInline=False,
-    )
-
-    tag_group = draw.Group()
-    tag_group.append(
-        draw.Rectangle(
-            x=0, y=0, width=step * grid_size, height=step * grid_size, fill="black"
-        )
-    )
-
     num_components, components = cv2.connectedComponents(bits_list, connectivity=4)
     line_corners = []
     holes = []
@@ -377,6 +363,39 @@ def generate_svg(
         else:
             holes.append(None)
 
+    # TODO: instead of 10, make sure it's at least 1, but also 1/10 of the step
+    # we need to make sure that the tag itself has a tiny border around it so the
+    # detection works, because it's not a guarantee that anything the tag is placed
+    # on will be of a different color
+    buffer = 10
+    tag_orig = buffer // 2
+    tag_drawing = draw.Drawing(
+        step * grid_size + buffer,
+        step * grid_size + buffer,
+        origin=(0, 0),
+        displayInline=False,
+    )
+
+    tag_group = draw.Group()
+    tag_group.append(
+        draw.Rectangle(
+            x=0,
+            y=0,
+            width=step * grid_size + buffer,
+            height=step * grid_size + buffer,
+            fill="white",
+        )
+    )
+    tag_group.append(
+        draw.Rectangle(
+            x=tag_orig,
+            y=tag_orig,
+            width=step * grid_size,
+            height=step * grid_size,
+            fill="black",
+        )
+    )
+
     for corners, hole in zip(line_corners, holes):
         if hole is not None:
             # if False:
@@ -388,22 +407,22 @@ def generate_svg(
                 stroke="white",
             )
             # draw the line
-            path.M(corners[0][0] * step, corners[0][1] * step)
+            path.M(corners[0][0] * step + tag_orig, corners[0][1] * step + tag_orig)
             for i in range(len(corners)):
-                path.L(corners[i][0] * step, corners[i][1] * step)
+                path.L(corners[i][0] * step + tag_orig, corners[i][1] * step + tag_orig)
             path.Z()
 
             # draw the hole
-            path.M(hole[0][0] * step, hole[0][1] * step)
+            path.M(hole[0][0] * step + tag_orig, hole[0][1] * step + tag_orig)
             for i in range(len(hole)):
-                path.L(hole[i][0] * step, hole[i][1] * step)
+                path.L(hole[i][0] * step + tag_orig, hole[i][1] * step + tag_orig)
             path.Z()
 
             tag_group.append(path)
         else:
             tag_group.append(
                 draw.Lines(
-                    *(np.array(corners)).flatten() * step,
+                    *(np.array(corners)).flatten() * step + tag_orig,
                     close=True,
                     stroke_width=2,
                     fill="white",
@@ -421,23 +440,24 @@ def generate_svg(
     return tag_drawing
 
 
-if __name__ == "__main__":
-    dict_name = cv2.aruco.DICT_5X5_1000
+def generate_all(basename, save_folder="output", border_bits=1):
+    if basename == "DICT_5X5_1000":
+        dict_name = cv2.aruco.DICT_5X5_1000
+    else:
+        raise RuntimeError(f"Unknown basename {basename}")
     tag_dict = cv2.aruco.getPredefinedDictionary(dict_name)
-    basename = "DICT_5X5_1000"
     failed_tag_ids = []
     total = 0
 
     for tag_id in range(0, tag_dict.bytesList.shape[0]):
-        # for tag_id in range(0, 5):
         print(f"working on tag {tag_id}")
         total += 1
         try:
             generate_svg(
                 tag_dict=tag_dict,
                 tag_id=tag_id,
-                border_bits=1,
-                save_folder="output",
+                border_bits=border_bits,
+                save_folder=save_folder,
                 basename=basename,
                 save=True,
             )
@@ -445,6 +465,12 @@ if __name__ == "__main__":
             print(f"failed on tag {tag_id}")
             print(traceback.format_exc())
             failed_tag_ids.append(tag_id)
+
+    return tag_dict, total, failed_tag_ids
+
+
+if __name__ == "__main__":
+    _, total, failed_tag_ids = generate_all(basename="DICT_5X5_1000")
 
     print(f"Failed on {len(failed_tag_ids)} out of {total} tags")
     print(f"Failed: {failed_tag_ids}")

@@ -16,3 +16,16 @@ dependencies = [
 	"numpy",
 	"opencv-contrib-python-headless~=4.8",
 ]
+
+[project.optional-dependencies]
+tests = [
+	"cairosvg~=2.7",
+	"pytest~=7.4"
+]
+
+[tool.pytest.ini_options]
+addopts = "-sv"
+testpaths = [
+	"tests"
+]
+log_cli=true
