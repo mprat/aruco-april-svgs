@@ -3,7 +3,7 @@
 from enum import IntEnum
 import os
 import traceback
-from typing import NamedTuple, Tuple
+from typing import List, NamedTuple, Tuple
 
 import cv2
 import drawsvg as draw
@@ -125,6 +125,51 @@ def get_inside_point(seg):
         return (midpoint[0] + 0.5, midpoint[1])
 
 
+def get_next_candidate_segments(
+    current_segment: Segment, possible_segments: List[Segment]
+):
+    return [
+        cand
+        for cand in possible_segments
+        if current_segment.start in (cand.start, cand.end)
+        and not is_opposite(current_segment.inside, cand.inside)
+    ]
+
+
+def get_most_likely_next_segment(
+    current_segment: Segment, next_candidates: List[Segment]
+):
+    # if we have only one option, that's our option!
+    if len(next_candidates) == 1:
+        return next_candidates[0]
+
+    # otherwise we pick our most likely candidate and save the state
+    # our most likely candidate is the one that is "closer"
+    # to the segment in question based on the "inside-ness" of
+    # the segment. e.g.:
+    #
+    #   | ->   --- one we're matching to
+    #
+    #   ^
+    #   |      --- candidate 1
+    #   _
+    #
+    #   _
+    #   |      --- candidate 2
+    #  \ /
+    #
+    #  candidate 1 is "closer" because the point representing the orientation
+    #  is closer to the one we're matching than the one from candidate 2
+    #
+    cur_inside_point = get_inside_point(current_segment)
+    inside_points = [get_inside_point(cand) for cand in next_candidates]
+    inside_point_dist = [
+        np.sqrt((ip[0] - cur_inside_point[0]) ** 2 + (ip[1] - cur_inside_point[1]) ** 2)
+        for ip in inside_points
+    ]
+    return next_candidates[np.argmin(inside_point_dist)]
+
+
 def generate_svg(
     tag_dict,
     tag_id,
@@ -225,13 +270,14 @@ def generate_svg(
         next_seg = keep_segments.pop()
         ordered = [next_seg]
         hole = []
+
+        # TODO: REFACTOR THIS LOOP SO THAT WE CAN DO A DYNAMIC PROGRAMMING
+        # THING AND RETURN A "PATH". THE UPPER-LEVEL LOGIC SHOULD BE
+        # THE ONE DECIDING WHETHER THE PATH IS A PATH OR A HOLE
         while len(keep_segments) > 0:
-            next_seg_cands = [
-                cand
-                for cand in keep_segments
-                if next_seg.start in (cand.start, cand.end)
-                and not is_opposite(next_seg.inside, cand.inside)
-            ]
+            next_seg_cands = get_next_candidate_segments(
+                current_segment=next_seg, possible_segments=keep_segments
+            )
 
             # if there are zero segments available then we have reached
             # the DFS search or we have a hole in the center
@@ -239,20 +285,16 @@ def generate_svg(
                 # have we reached the end of the path?
                 if share_corner(ordered[0], ordered[-1]):
                     # we believe the remaining path elements to be
-                    # a hole, so we need to reconnect that path
+                    # a hole (or multiple holes!), so we need to reconnect that path
                     next_seg = keep_segments.pop()
                     hole = [next_seg]
                     while len(keep_segments) > 0:
-                        next_seg_cands = [
-                            cand
-                            for cand in keep_segments
-                            if next_seg.start in (cand.start, cand.end)
-                            and not is_opposite(next_seg.inside, cand.inside)
-                        ]
-                        if len(next_seg_cands) != 1:
-                            raise RuntimeError("WHEN")
-
-                        next_seg = next_seg_cands[0]
+                        next_seg_cands = get_next_candidate_segments(
+                            current_segment=next_seg, possible_segments=keep_segments
+                        )
+                        next_seg = get_most_likely_next_segment(
+                            current_segment=next_seg, next_candidates=next_seg_cands
+                        )
                         hole.append(next_seg)
                         keep_segments.remove(next_seg)
 
@@ -285,67 +327,35 @@ def generate_svg(
                                 tried,
                                 others_to_try,
                             )
-
-                            import pdb
-
-                            pdb.set_trace()
                             ordered.append(next_seg)
                             keep_segments.remove(next_seg)
 
                             # reset the hole
                             hole = []
                         else:
-                            raise RuntimeError("WHERE")
+                            raise RuntimeError("Hole isn't valid, but no save state")
 
                     # go back to the beginning of the loop
                     # since the hole is valid and we found one
                     continue
 
-            if len(next_seg_cands) == 1:
-                next_seg = next_seg_cands[0]
-            else:
-                # we pick our most likely candidate and save the state
-                # our most likely candidate is the one that is "closer"
-                # to the segment in question based on the "inside-ness" of
-                # the segment. e.g.:
-                #
-                #   | ->   --- one we're matching to
-                #
-                #   ^
-                #   |      --- candidate 1
-                #   _
-                #
-                #   _
-                #   |      --- candidate 2
-                #  \ /
-                #
-                #  candidate 1 is "closer" because the point representing the orientation
-                #  is closer to the one we're matching than the one from candidate 2
-                #
-                cur_inside_point = get_inside_point(next_seg)
-                inside_points = [get_inside_point(cand) for cand in next_seg_cands]
-                inside_point_dist = [
-                    np.sqrt(
-                        (ip[0] - cur_inside_point[0]) ** 2
-                        + (ip[1] - cur_inside_point[1]) ** 2
-                    )
-                    for ip in inside_points
-                ]
-                next_seg = next_seg_cands[np.argmin(inside_point_dist)]
+            next_seg = get_most_likely_next_segment(
+                current_segment=next_seg, next_candidates=next_seg_cands
+            )
 
-                # save the state
-                # (segments not yet assigned,
-                #  segments already assigned,
-                #  segment about to try assigning,
-                #  possible segments that can be assigned)
-                # the one we've tried assigning is not yet removed from keep_segments
-                next_seg_cands.remove(next_seg)
-                save_state = (
-                    keep_segments.copy(),
-                    ordered.copy(),
-                    [next_seg],
-                    next_seg_cands,
-                )
+            # save the state
+            # (segments not yet assigned,
+            #  segments already assigned,
+            #  segment about to try assigning,
+            #  possible segments that can be assigned)
+            # the one we've tried assigning is not yet removed from keep_segments
+            next_seg_cands.remove(next_seg)
+            save_state = (
+                keep_segments.copy(),
+                ordered.copy(),
+                [next_seg],
+                next_seg_cands,
+            )
 
             ordered.append(next_seg)
             keep_segments.remove(next_seg)
