@@ -26,6 +26,11 @@ class Orientation(IntEnum):
     DOWN = 3
 
 
+class PathOrientation(IntEnum):
+    INNER = 0
+    OUTER = 1
+
+
 def is_opposite(or1, or2):
     return (
         (or1 == Orientation.LEFT and or2 == Orientation.RIGHT)
@@ -39,6 +44,19 @@ class Segment(NamedTuple):
     start: Tuple
     end: Tuple
     inside: Orientation
+
+
+def flip_orientation(seg):
+    """Flip the orientation of the segment."""
+    if seg.inside == Orientation.LEFT:
+        seg = seg._replace(inside=Orientation.RIGHT)
+    elif seg.inside == Orientation.RIGHT:
+        seg = seg._replace(inside=Orientation.LEFT)
+    elif seg.inside == Orientation.UP:
+        seg = seg._replace(inside=Orientation.DOWN)
+    elif seg.inside == Orientation.DOWN:
+        seg = seg._replace(inside=Orientation.UP)
+    return seg
 
 
 def is_same(seg1, seg2):
@@ -126,7 +144,8 @@ def get_inside_point(seg):
 
 
 def get_next_candidate_segments(
-    current_segment: Segment, possible_segments: List[Segment]
+    current_segment: Segment,
+    possible_segments: List[Segment],
 ):
     return [
         cand
@@ -137,7 +156,8 @@ def get_next_candidate_segments(
 
 
 def get_most_likely_next_segment(
-    current_segment: Segment, next_candidates: List[Segment]
+    current_segment: Segment,
+    next_candidates: List[Segment],
 ):
     # if we have only one option, that's our option!
     if len(next_candidates) == 1:
@@ -170,6 +190,75 @@ def get_most_likely_next_segment(
     return next_candidates[np.argmin(inside_point_dist)]
 
 
+def get_next_path(
+    segments: List[Segment], next_segment: Segment, path_orientation: PathOrientation
+):
+    """Return the next path from the list of segments.
+
+    The caller of this function decides whether the segment
+    is a hole, an outer, etc.
+
+    For segments that have the desired path on the "outside", we
+    flip the orientations of all the segments so that the logic
+    for getting the next best segment is correct, then flip all
+    the orientations back before returning the next segments to
+    keep.
+    """
+    next_seg = next_segment  # TODO: .copy()
+    path = [next_seg]
+    remaining_segments = segments.copy()
+
+    while len(remaining_segments) > 0:
+        next_seg_cands = get_next_candidate_segments(
+            current_segment=next_seg, possible_segments=remaining_segments
+        )
+
+        if len(next_seg_cands) == 0:
+            # if there are zero segments available then we have reached
+            # a state where we need to backtrack our search or there
+            # is a hole in the center. either way, this function needs
+            # to return
+            return path, remaining_segments, save_state
+
+        # at this point, if we are looking for a PathOrientation of
+        # OUTER, we need to flip t he orientations of all the candidates
+        # this means we're likely looking for holes, and need to apply all
+        # our heuristics "backwards"
+        if path_orientation == PathOrientation.OUTER:
+            next_seg = flip_orientation(next_seg)
+            next_seg_cands = [flip_orientation(seg) for seg in next_seg_cands]
+
+        next_seg = get_most_likely_next_segment(
+            current_segment=next_seg, next_candidates=next_seg_cands
+        )
+
+        if path_orientation == PathOrientation.OUTER:
+            next_seg = flip_orientation(next_seg)
+            next_seg_cands = [flip_orientation(seg) for seg in next_seg_cands]
+
+        # save the state
+        # (segments not yet assigned,
+        #  segments already assigned,
+        #  segment about to try assigning,
+        #  possible segments that can be assigned)
+        # the one we've tried assigning is not yet removed from keep_segments
+        next_seg_cands.remove(next_seg)
+        save_state = (
+            remaining_segments.copy(),
+            path.copy(),
+            [next_seg],
+            next_seg_cands,
+        )
+
+        path.append(next_seg)
+        remaining_segments.remove(next_seg)
+
+    # if we get here, we're expecting the remaining_segments
+    # variable to be empty, since we've used all the available
+    # segments to make a path
+    return path, remaining_segments, save_state
+
+
 def generate_svg(
     tag_dict,
     tag_id,
@@ -193,7 +282,7 @@ def generate_svg(
     # per group
     num_components, components = cv2.connectedComponents(bits_list, connectivity=4)
     line_corners = []
-    holes = []
+    all_holes = []
 
     # component id 0 is where there are no tags present
     for component_id in range(1, num_components):
@@ -267,111 +356,60 @@ def generate_svg(
         # being preserved properly. there are only 3 kinds of
         # segments that can come next based on the existing
         # segment rules
+        #
+        holes = []
         next_seg = keep_segments.pop()
-        ordered = [next_seg]
-        hole = []
-
-        # TODO: REFACTOR THIS LOOP SO THAT WE CAN DO A DYNAMIC PROGRAMMING
-        # THING AND RETURN A "PATH". THE UPPER-LEVEL LOGIC SHOULD BE
-        # THE ONE DECIDING WHETHER THE PATH IS A PATH OR A HOLE
-        while len(keep_segments) > 0:
-            next_seg_cands = get_next_candidate_segments(
-                current_segment=next_seg, possible_segments=keep_segments
-            )
-
-            # if there are zero segments available then we have reached
-            # the DFS search or we have a hole in the center
-            if len(next_seg_cands) == 0:
-                # have we reached the end of the path?
-                if share_corner(ordered[0], ordered[-1]):
-                    # we believe the remaining path elements to be
-                    # a hole (or multiple holes!), so we need to reconnect that path
-                    next_seg = keep_segments.pop()
-                    hole = [next_seg]
-                    while len(keep_segments) > 0:
-                        next_seg_cands = get_next_candidate_segments(
-                            current_segment=next_seg, possible_segments=keep_segments
-                        )
-                        next_seg = get_most_likely_next_segment(
-                            current_segment=next_seg, next_candidates=next_seg_cands
-                        )
-                        hole.append(next_seg)
-                        keep_segments.remove(next_seg)
-
-                    # if this is FALSE and we have a save_state, then we need
-                    # to back-track and try a different candidate
-                    hole_valid = hole[0].start in (
-                        hole[-1].start,
-                        hole[-1].end,
-                    ) or hole[0].end in (
-                        hole[-1].start,
-                        hole[-1].end,
-                    )
-                    if not hole_valid:
-                        if save_state is not None:
-                            # BACKTRACK from save_state
-                            (
-                                keep_segments,
-                                ordered,
-                                tried,
-                                others_to_try,
-                            ) = save_state
-
-                            next_seg = others_to_try[0]
-                            tried.append(next_seg)
-                            others_to_try.remove(next_seg)
-
-                            save_state = (
-                                keep_segments,
-                                ordered,
-                                tried,
-                                others_to_try,
-                            )
-                            ordered.append(next_seg)
-                            keep_segments.remove(next_seg)
-
-                            # reset the hole
-                            hole = []
-                        else:
-                            raise RuntimeError("Hole isn't valid, but no save state")
-
-                    # go back to the beginning of the loop
-                    # since the hole is valid and we found one
-                    continue
-
-            next_seg = get_most_likely_next_segment(
-                current_segment=next_seg, next_candidates=next_seg_cands
-            )
-
-            # save the state
-            # (segments not yet assigned,
-            #  segments already assigned,
-            #  segment about to try assigning,
-            #  possible segments that can be assigned)
-            # the one we've tried assigning is not yet removed from keep_segments
-            next_seg_cands.remove(next_seg)
-            save_state = (
-                keep_segments.copy(),
-                ordered.copy(),
-                [next_seg],
-                next_seg_cands,
-            )
-
-            ordered.append(next_seg)
-            keep_segments.remove(next_seg)
-
+        ordered, remaining_segments, save_state = get_next_path(
+            segments=keep_segments,
+            next_segment=next_seg,
+            path_orientation=PathOrientation.INNER,
+        )
         assert ordered[0].start in (ordered[-1].start, ordered[-1].end) or ordered[
             0
         ].end in (
             ordered[-1].start,
             ordered[-1].end,
         )
-
         line_corners.append(ordered_segments_to_corners_list(ordered))
-        if hole:
-            holes.append(ordered_segments_to_corners_list(hole))
+
+        while len(remaining_segments) != 0:
+            # we either need to make a hole, or move backwards
+            # in the DFS search
+            # have we reached the end of the path?
+            if share_corner(ordered[0], ordered[-1]):
+                # we believe the remaining path elements to be
+                # a hole (or multiple holes!), so we need to reconnect that path
+                next_seg = remaining_segments.pop()
+                ordered, remaining_segments, save_state = get_next_path(
+                    segments=remaining_segments,
+                    next_segment=next_seg,
+                    path_orientation=PathOrientation.OUTER,
+                )
+
+                # if this is FALSE and we have a save_state, then we need
+                # to back-track and try a different candidate
+                hole_valid = ordered[0].start in (
+                    ordered[-1].start,
+                    ordered[-1].end,
+                ) or ordered[0].end in (
+                    ordered[-1].start,
+                    ordered[-1].end,
+                )
+
+                if hole_valid:
+                    holes.append(ordered)
+                else:
+                    raise RuntimeError("Hole is not valid")
+            else:
+                raise RuntimeError("Not the end of a path, need to backtrack")
+
+        if holes:
+            hole_corners = []
+            for hole in holes:
+                hole_corners.append(ordered_segments_to_corners_list(hole))
+            all_holes.append(hole_corners)
         else:
-            holes.append(None)
+            all_holes.append(None)
 
     # TODO: instead of 10, make sure it's at least 1, but also 1/10 of the step
     # we need to make sure that the tag itself has a tiny border around it so the
@@ -406,10 +444,8 @@ def generate_svg(
         )
     )
 
-    for corners, hole in zip(line_corners, holes):
-        if hole is not None:
-            # if False:
-            # TODO: MAKE SURE THIS IS IN THE OPPOSITE ORIENTATION FROM THE LINE
+    for corners, holes in zip(line_corners, all_holes):
+        if holes is not None:
             path = draw.Path(
                 stroke_width=2,
                 fill="white",
@@ -422,11 +458,14 @@ def generate_svg(
                 path.L(corners[i][0] * step + tag_orig, corners[i][1] * step + tag_orig)
             path.Z()
 
-            # draw the hole
-            path.M(hole[0][0] * step + tag_orig, hole[0][1] * step + tag_orig)
-            for i in range(len(hole)):
-                path.L(hole[i][0] * step + tag_orig, hole[i][1] * step + tag_orig)
-            path.Z()
+            for hole in holes:
+                # TODO: make sure this is in the opposite orientation from the line
+                # it looks like this is already done?
+                # draw the hole
+                path.M(hole[0][0] * step + tag_orig, hole[0][1] * step + tag_orig)
+                for i in range(len(hole)):
+                    path.L(hole[i][0] * step + tag_orig, hole[i][1] * step + tag_orig)
+                path.Z()
 
             tag_group.append(path)
         else:
