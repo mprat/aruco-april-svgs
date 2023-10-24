@@ -9,10 +9,21 @@ from tags import dictionary
 from tags import generate
 
 
-def test_output_tags(tmpdir):
+def test_all_opencv_dicts_converted():
+    """Make sure all dictionaries available in OpenCV are converted."""
+    with pytest.raises(RuntimeError):
+        dictionary.get_dict("some made up dictionary name")
+
+    all_dict_names = dictionary.get_all_dict_names_opencv()
+    for dict_name in all_dict_names:
+        dictionary.get_dict(dict_name)
+
+
+@pytest.mark.parametrize("dict_name", dictionary.get_all_dict_names_opencv())
+def test_output_tags(tmpdir, dict_name):
     """Generate all tags, convert to png, make sure we can detect."""
     save_folder = tmpdir
-    tag_dict = generate.get_dict(dict_name="DICT_5X5_1000")
+    tag_dict = generate.get_dict(dict_name=dict_name)
     tag_dict, total, failed_tag_ids = generate.generate_all(
         tag_dict=tag_dict, save_folder=save_folder, border_bits=1
     )
@@ -31,13 +42,3 @@ def test_output_tags(tmpdir):
         img = cv2.imread(pngpath)
         corners, ids, _ = cv2.aruco.detectMarkers(img, tag_dict.dictionary)
         assert expected_tag_id == ids, expected_tag_id
-
-
-def test_all_opencv_dicts_converted():
-    """Make sure all dictionaries available in OpenCV are converted."""
-    with pytest.raises(RuntimeError):
-        dictionary.get_dict("some made up dictionary name")
-
-    all_dict_names = dictionary.get_all_dict_names_opencv()
-    for dict_name in all_dict_names:
-        dictionary.get_dict(dict_name)
