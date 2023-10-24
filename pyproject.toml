@@ -48,3 +48,13 @@ target-version = "py312"
 
 [tool.ruff.flake8-quotes]
 docstring-quotes = "double"
+
+[tool.ruff.isort]
+combine-as-imports = true
+force-sort-within-sections = true
+
+[tool.ruff.format]
+indent-style = "space"  # same as Black
+line-ending = "auto"  # same as Black
+quote-style = "double"  # same as Black
+skip-magic-trailing-comma = false  # same as Black

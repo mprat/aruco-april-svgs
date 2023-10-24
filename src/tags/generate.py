@@ -1,8 +1,8 @@
 # dir(cv2.aruco) --> everything that starts with DICT_
 
+from enum import IntEnum
 import os
 import traceback
-from enum import IntEnum
 from typing import List, NamedTuple, Tuple
 
 import cv2
