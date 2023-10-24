@@ -1,15 +1,15 @@
 # dir(cv2.aruco) --> everything that starts with DICT_
 
-from enum import IntEnum
 import os
 import traceback
+from enum import IntEnum
 from typing import List, NamedTuple, Tuple
 
 import cv2
 import drawsvg as draw
 import numpy as np
 
-from .dictionary import get_dict, TagDict
+from .dictionary import TagDict, get_dict
 
 
 def bit_coordinate_to_corner_coordinate(bit_coordinate):

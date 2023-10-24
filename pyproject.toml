@@ -36,8 +36,13 @@ log_cli=true
 # E - pycodestyle errors
 # W - pycodestyle warnings
 # B - flake8-bugbear
+# F - pyflakes
+# I - isort
+# RUF - ruff-specific rules
+# NPY - numpy specific rules
+# PL - pylint -- not enabled yet
 # D - pydocstyle -- not enabled yet
-select = ["E", "W", "B"]
+select = ["E", "W", "B", "F", "I", "RUF", "NPY"]
 line-length = 88  # same as Black
 target-version = "py312"
 

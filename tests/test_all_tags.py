@@ -4,9 +4,7 @@ import os
 import cairosvg
 import cv2
 import pytest
-
-from tags import dictionary
-from tags import generate
+from tags import dictionary, generate
 
 
 def test_all_opencv_dicts_converted():
