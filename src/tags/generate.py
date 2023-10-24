@@ -209,6 +209,7 @@ def get_next_path(
     next_seg = next_segment  # TODO: .copy()
     path = [next_seg]
     remaining_segments = segments.copy()
+    save_state = None
 
     while len(remaining_segments) > 0:
         next_seg_cands = get_next_candidate_segments(
@@ -320,7 +321,9 @@ def generate_svg(
         # we also fliplr here so that X and Y are correctly drawn
         # in the SVG coordinate system
         tag_square_coords = (
-            np.fliplr(np.array(list(zip(*np.where(components == component_id)))))
+            np.fliplr(
+                np.array(list(zip(*np.where(components == component_id), strict=True)))
+            )
             + border_bits
         )
         tag_square_coords = [tuple(tsc) for tsc in tag_square_coords]
@@ -446,7 +449,7 @@ def generate_svg(
         )
     )
 
-    for corners, holes in zip(line_corners, all_holes):
+    for corners, holes in zip(line_corners, all_holes, strict=True):
         if holes is not None:
             path = draw.Path(
                 stroke_width=2,
@@ -506,7 +509,7 @@ def generate_all(tag_dict: TagDict, save_folder: str = "output", border_bits: in
                 basename=tag_dict.name,
                 save=True,
             )
-        except Exception as exc:
+        except Exception:
             print(f"failed on tag {tag_id}")
             print(traceback.format_exc())
             failed_tag_ids.append(tag_id)

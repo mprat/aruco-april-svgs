@@ -21,7 +21,8 @@ dependencies = [
 tests = [
 	"cairosvg~=2.7",
 	"pytest~=7.4",
-	"pytest-xdist~=3.3"
+	"pytest-xdist~=3.3",
+	"ruff"
 ]
 
 [tool.pytest.ini_options]
@@ -30,3 +31,15 @@ testpaths = [
 	"tests"
 ]
 log_cli=true
+
+[tool.ruff]
+# E - pycodestyle errors
+# W - pycodestyle warnings
+# B - flake8-bugbear
+# D - pydocstyle -- not enabled yet
+select = ["E", "W", "B"]
+line-length = 88  # same as Black
+target-version = "py312"
+
+[tool.ruff.flake8-quotes]
+docstring-quotes = "double"
