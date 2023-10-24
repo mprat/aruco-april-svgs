@@ -7,13 +7,14 @@ import cv2
 from tags import generate
 
 
-def test_output_tags():
+def test_output_tags(tmpdir):
     """Generate all tags, convert to png, make sure we can detect."""
-    # TODO: save to temp folder
-    save_folder = "output"
+    save_folder = tmpdir
+    tag_dict = generate.get_dict(dict_name="DICT_5X5_1000")
     tag_dict, total, failed_tag_ids = generate.generate_all(
-        basename="DICT_5X5_1000", save_folder=save_folder, border_bits=1
+        tag_dict=tag_dict, save_folder=save_folder, border_bits=1
     )
+    assert len(failed_tag_ids) == 0
 
     # now read all the tags back, convert to PNG, and make sure
     # we can detect them with the opencv aruco detector
@@ -26,5 +27,5 @@ def test_output_tags():
         expected_tag_id = int(pngpath.split("_")[-1].replace(".png", ""))
         print(f"working on tag {expected_tag_id}")
         img = cv2.imread(pngpath)
-        corners, ids, _ = cv2.aruco.detectMarkers(img, tag_dict)
+        corners, ids, _ = cv2.aruco.detectMarkers(img, tag_dict.dictionary)
         assert expected_tag_id == ids, expected_tag_id

@@ -489,25 +489,34 @@ def generate_svg(
     return tag_drawing
 
 
-def generate_all(basename, save_folder="output", border_bits=1):
-    if basename == "DICT_5X5_1000":
+class TagDict(NamedTuple):
+    dictionary: cv2.aruco.Dictionary
+    name: str
+
+
+def get_dict(dict_name: str) -> TagDict:
+    if dict_name == "DICT_5X5_1000":
         dict_name = cv2.aruco.DICT_5X5_1000
     else:
-        raise RuntimeError(f"Unknown basename {basename}")
-    tag_dict = cv2.aruco.getPredefinedDictionary(dict_name)
+        raise RuntimeError(f"Unknown dict name {dict_name}")
+    return TagDict(
+        dictionary=cv2.aruco.getPredefinedDictionary(dict_name), name=dict_name
+    )
+
+
+def generate_all(tag_dict: TagDict, save_folder: str = "output", border_bits: int = 1):
     failed_tag_ids = []
     total = 0
-
-    for tag_id in range(0, tag_dict.bytesList.shape[0]):
+    for tag_id in range(0, tag_dict.dictionary.bytesList.shape[0]):
         print(f"working on tag {tag_id}")
         total += 1
         try:
             generate_svg(
-                tag_dict=tag_dict,
+                tag_dict=tag_dict.dictionary,
                 tag_id=tag_id,
                 border_bits=border_bits,
                 save_folder=save_folder,
-                basename=basename,
+                basename=tag_dict.name,
                 save=True,
             )
         except Exception as exc:
@@ -519,7 +528,8 @@ def generate_all(basename, save_folder="output", border_bits=1):
 
 
 if __name__ == "__main__":
-    _, total, failed_tag_ids = generate_all(basename="DICT_5X5_1000")
+    tag_dict = get_dict(basename="DICT_5X5_1000")
+    _, total, failed_tag_ids = generate_all(tag_dict=tag_dict)
 
     print(f"Failed on {len(failed_tag_ids)} out of {total} tags")
     print(f"Failed: {failed_tag_ids}")
