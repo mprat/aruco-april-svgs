@@ -3,7 +3,9 @@ import os
 
 import cairosvg
 import cv2
+import pytest
 
+from tags import dictionary
 from tags import generate
 
 
@@ -29,3 +31,13 @@ def test_output_tags(tmpdir):
         img = cv2.imread(pngpath)
         corners, ids, _ = cv2.aruco.detectMarkers(img, tag_dict.dictionary)
         assert expected_tag_id == ids, expected_tag_id
+
+
+def test_all_opencv_dicts_converted():
+    """Make sure all dictionaries available in OpenCV are converted."""
+    with pytest.raises(RuntimeError):
+        dictionary.get_dict("some made up dictionary name")
+
+    all_dict_names = dictionary.get_all_dict_names_opencv()
+    for dict_name in all_dict_names:
+        dictionary.get_dict(dict_name)

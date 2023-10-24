@@ -9,6 +9,8 @@ import cv2
 import drawsvg as draw
 import numpy as np
 
+from .dictionary import get_dict, TagDict
+
 
 def bit_coordinate_to_corner_coordinate(bit_coordinate):
     return [
@@ -487,21 +489,6 @@ def generate_svg(
         tag_drawing.set_render_size(w="1.75in", h="1.75in")
         tag_drawing.save_svg(os.path.join(save_folder, f"{basename}_{tag_id:04}.svg"))
     return tag_drawing
-
-
-class TagDict(NamedTuple):
-    dictionary: cv2.aruco.Dictionary
-    name: str
-
-
-def get_dict(dict_name: str) -> TagDict:
-    if dict_name == "DICT_5X5_1000":
-        dict_name = cv2.aruco.DICT_5X5_1000
-    else:
-        raise RuntimeError(f"Unknown dict name {dict_name}")
-    return TagDict(
-        dictionary=cv2.aruco.getPredefinedDictionary(dict_name), name=dict_name
-    )
 
 
 def generate_all(tag_dict: TagDict, save_folder: str = "output", border_bits: int = 1):
