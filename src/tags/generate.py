@@ -518,8 +518,8 @@ def generate_all(tag_dict: TagDict, save_folder: str = "output", border_bits: in
 
 
 if __name__ == "__main__":
-    tag_dict = get_dict(basename="DICT_5X5_1000")
-    _, total, failed_tag_ids = generate_all(tag_dict=tag_dict)
+    tag_dict = get_dict(dict_name="DICT_5X5_1000")
+    _, total, failed_tag_ids = generate_all(tag_dict=tag_dict.dictionary)
 
     print(f"Failed on {len(failed_tag_ids)} out of {total} tags")
     print(f"Failed: {failed_tag_ids}")
