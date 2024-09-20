@@ -505,7 +505,7 @@ def generate_all(tag_dict: TagDict, save_folder: str = "output", border_bits: in
                 tag_dict=tag_dict.dictionary,
                 tag_id=tag_id,
                 border_bits=border_bits,
-                save_folder=save_folder,
+                save_folder=os.path.join(save_folder, tag_dict.name),
                 basename=tag_dict.name,
                 save=True,
             )
