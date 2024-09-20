@@ -9,7 +9,7 @@ import cv2
 import drawsvg as draw
 import numpy as np
 
-from .dictionary import TagDict, get_dict
+from tags.dictionary import TagDict, get_all_dict_names_opencv, get_dict
 
 
 def bit_coordinate_to_corner_coordinate(bit_coordinate):
@@ -518,8 +518,9 @@ def generate_all(tag_dict: TagDict, save_folder: str = "output", border_bits: in
 
 
 if __name__ == "__main__":
-    tag_dict = get_dict(dict_name="DICT_5X5_1000")
-    _, total, failed_tag_ids = generate_all(tag_dict=tag_dict.dictionary)
+    for dict_name in get_all_dict_names_opencv():
+        tag_dict = get_dict(dict_name=dict_name)
+        _, total, failed_tag_ids = generate_all(tag_dict=tag_dict)
 
-    print(f"Failed on {len(failed_tag_ids)} out of {total} tags")
-    print(f"Failed: {failed_tag_ids}")
+        print(f"Failed on {len(failed_tag_ids)} out of {total} tags")
+        print(f"Failed: {failed_tag_ids}")
